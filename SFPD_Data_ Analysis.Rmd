@@ -1,0 +1,183 @@
+---
+title: "Homework on SFPD Data"
+author: "Yuhao Wang & Meiyuan Li"
+date: "4/20/2017"
+output: html_document
+---
+
+This homework requires you to analyze crime data from San Francisco, using exploratory data analysis (EDA). This is a **group** homework. 
+
+Q1: Read in the data using the **fread()** function in R. How many rows and columns of data do you have? The file is "SFPD_Incidents_from_January_2003.csv". 
+```{r}
+library(data.table)
+library(bit)
+library(bit64)
+df <- fread("/Users/yuhaowang/Downloads/SFPD_Incidents_from_January_2003.csv")
+dim(df)
+```
+
+Q2: How many different types of crime categories are there? Print them out. 
+```{r}
+unique(df$Category)
+```
+
+
+Q3: Plot the total incidence of crime over time by year using the **ggplot** package. Label the axes properly and make sure the plot is complete and looks good. 
+```{r}
+library(ggplot2)
+library(lubridate)
+df2 <- df
+df2$Date <- as.Date(df2$Date, "%m/%d/%Y")
+ggplot(df2, aes(x = year(df2$Date))) +
+  geom_histogram(col="red",
+                 fill="green",
+                 alpha = .2) + 
+  scale_x_discrete(limits=c(2003,2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017)) 
+```
+
+Q4: Create a table to show the frequency of all crimes over time. This data frame should have one column per crime. Be careful to handle missing values as all crimes may not occur every year. Print out the top of this data frame. 
+
+```{r}
+library(dummies)
+library(dplyr)
+df_new <- data.frame(df2$Category,year(df2$Date))
+df_new <- dummy.data.frame(df_new, names = "df2.Category" , sep = ".")
+colnames(df_new)[40] <- "year"
+df_new <- replace(df_new, is.na(df_new), 0)
+gdf <- df_new %>% group_by(year)
+Freq_C <- summarise_each(gdf, funs(sum))
+print(head(Freq_C))
+```
+
+
+Q5: Compute the correlations of all crimes and report top 10 pairs of crimes that are most correlated. 
+```{r}
+library(psych)
+df_corr <- summarise_each(gdf, funs(sum))
+df_corr <- df_corr[,2:40]
+d <- cor(df_corr)
+data <- as.data.frame(as.table(d))
+combinations <- combn(colnames(d), 2, FUN=function(x){paste(x, collapse="_")})
+data <- data[data$Var1!=data$Var2,]
+data <- data[paste(data$Var1, data$Var2, sep="_" ) %in% combinations,]
+data <- data[order(-data$Freq),]
+print(data[1:10,])
+```
+
+
+Q6: Plot all the crimes by year to see how they evolve. Choose any plot type you think will be the best visualization of the data. Make sure this is something readable and not a mess!
+
+```{r}
+library(dplyr)
+library(scales) 
+crimes_by_year <- df
+
+# date manipulation
+crimes_by_year$Date  <- as.Date(crimes_by_year$Date, "%m/%d/%Y")
+crimes_by_year$Year  <- as.numeric(format(crimes_by_year$Date, "%Y"))
+crimes_by_year$Month <- as.numeric(format(crimes_by_year$Date, "%m"))
+crimes_by_year$Day   <- as.numeric(format(crimes_by_year$Date, "%d"))
+
+crimes_by_year$Category <- as.factor(crimes_by_year$Category)
+
+# compute montly count per Category
+crimes_by_year.agg <- crimes_by_year %>% group_by(Year, Category) %>% summarize(count=n())
+crimes_by_year.agg$Date <- as.POSIXct(paste(crimes_by_year.agg$Year, "01", "01", sep = "-"))
+#print(class(crimes_by_year.agg$Date))
+# plot montly count per Category
+breaks <- seq(as.POSIXct("2003-01-01"), as.POSIXct("2018-01-01"), by="2 years")
+ggplot(crimes_by_year.agg, aes(x = Date, y = count, group = Category, col = Category)) +
+  geom_line(size=0.2) +
+  facet_wrap(~Category, ncol = 5, scales = "free_y") +
+  theme(legend.position="none",
+        axis.text=element_text(size=4),
+        strip.text = element_text(size = 4)) +
+  scale_y_continuous(limits = c(0, NA)) +
+  scale_x_datetime(breaks = breaks, labels = format(breaks, "%Y"))  
+```
+
+
+Q7: Create a pie chart of all crimes (aggregate across all years). 
+```{r}
+library(tibble)
+library(scales)
+library(ggrepel)
+library(forcats)
+a <- table(df2$Category)
+df3 <- data.frame(a)
+df3 <- df3[order(df3$Freq, decreasing = TRUE), ]
+Category = df3$Var1
+
+pmas <- ggplot(df3, aes(x = 1, y = Freq, fill = Category)) +
+  geom_bar(stat="identity", color='black') + 
+  coord_polar(theta='y') + 
+  guides(fill=guide_legend(override.aes=list(colour=NA)))+ 
+  theme(axis.ticks=element_blank(),  
+        axis.title=element_blank(),  
+        axis.text.y=element_blank(), 
+        axis.text.x = element_blank(), 
+        panel.grid = element_blank()) 
+pmas
+
+```
+
+Q8: Plot the total crimes by lattitude and longitude, for all combinations of police district and crime category, using a scatter plot. Make the scatter plot interactive using the **rbokeh** package. 
+```{r}
+#Data cleaning, drop the rows which lattitudes equal to north pole.
+print(min(df$X))
+print(max(df$X))
+print(min(df$Y))
+print(max(df$Y))
+print(df[df$Y==max(df$Y)])
+df_ll <- df
+df_ll <- df_ll[!(df_ll$Y==90),]
+max(df_ll$Y)
+```
+
+
+```{r}
+library(rbokeh)
+figure() %>%
+  ly_points(X, Y, data=df_ll, color = PdDistrict, hover=c(Category, PdDistrict)) 
+```
+
+Q9: Using annual counts, how much of DRUG/NARCOTIC offences can you explain using the number of LIQOUR LAWS, PROSTITUTION, and WEAPON LAWS violations? 
+```{r}
+New <- summarise_each(gdf, funs(sum))
+New <- data.frame("year"=New$year, 
+                  "DRUG/NARCOTIC"=New$`df2.Category.DRUG/NARCOTIC`, 
+                  "LIQOUR LAWS"=New$`df2.Category.LIQUOR LAWS`,
+                  "PROSTITUTION"=New$df2.Category.PROSTITUTION,
+                  "WEAPON LAWS"=New$`df2.Category.WEAPON LAWS`)
+cor(New[,2:5])
+```
+```{r}
+#print(New)
+ggplot(New, aes(x=year)) + 
+  geom_line(aes(y=DRUG.NARCOTIC, colour="DRUG.NARCOTIC")) + 
+  geom_line(aes(y=LIQOUR.LAWS, colour="LIQOUR.LAWS")) + 
+  geom_line(aes(y=PROSTITUTION, colour="PROSTITUTION")) +
+  geom_line(aes(y=WEAPON.LAWS, colour="WEAPON.LAWS")) + 
+  scale_colour_manual("Legend", 
+                      breaks = c("DRUG.NARCOTIC", "LIQOUR.LAWS", "PROSTITUTION", "WEAPON.LAWS"),
+                      values = c("steelblue", "pink", "red", "green")) +
+  xlab("years") +
+  ylab("value") 
+  
+```
+
+
+## Combining the correlation value and the changes by year, we can see that, the pair which the correlation is more high, the direction of changes is more similar. 
+
+
+Q10: How would you show in one picture, which crimes occur together the most? 
+```{r}
+library(rbokeh)
+helper1 <- data[1:10,]
+figure() %>%
+  ly_points(helper1$Freq,data=helper1, hover=c(helper1$Var1, helper1$Var2)) 
+```
+
+
+## As we can see from the picture, SEX OFFENSES, FORCIBLE	and WEAPON LAWS always occur together, because this pair gets the highest correlation value.
+
