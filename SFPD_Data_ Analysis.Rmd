@@ -1,18 +1,17 @@
 ---
-title: "Homework on SFPD Data"
+title: "SFPD Crime Data Analysis"
 author: "Yuhao Wang & Meiyuan Li"
 date: "4/20/2017"
 output: html_document
 ---
 
-This homework requires you to analyze crime data from San Francisco, using exploratory data analysis (EDA). This is a **group** homework. 
 
-Q1: Read in the data using the **fread()** function in R. How many rows and columns of data do you have? The file is "SFPD_Incidents_from_January_2003.csv". 
+Q1: How many rows and columns of data do you have? The file is "SFPD_Incidents_from_January_2003.csv". 
 ```{r}
 library(data.table)
 library(bit)
 library(bit64)
-df <- fread("/Users/yuhaowang/Downloads/SFPD_Incidents_from_January_2003.csv")
+df <- fread("/Users/meiyuan/Downloads/SFPD_Incidents_from_January_2003.csv")
 dim(df)
 ```
 
